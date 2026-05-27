@@ -1,0 +1,19 @@
+{
+  "name": "socrates-screen",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Root orchestrator. All real code lives in frontend/, backend/, worker/.",
+  "scripts": {
+    "dev":     "npm run dev     --prefix frontend",
+    "build":   "npm run build   --prefix frontend",
+    "preview": "npm run preview --prefix frontend",
+    "install:frontend": "npm install --prefix frontend",
+
+    "backend":         "cd backend && .venv\\Scripts\\python.exe main.py",
+    "backend:install": "cd backend && py -3.12 -m venv .venv && .venv\\Scripts\\python.exe -m pip install -r requirements.txt",
+
+    "worker:login":  "cd worker && npx wrangler login",
+    "worker:deploy": "cd worker && npx wrangler deploy",
+    "worker:dev":    "cd worker && npx wrangler dev"
+  }
+}
