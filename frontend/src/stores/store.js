@@ -20,44 +20,44 @@ const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
 export const ENERGY_OPTIONS = [
   {
     id: "think",
-    label: "Stimulate Me",
-    sublabel: "Cerebral, layered, morally complex. A film that lingers for days and demands a second watch.",
+    label: "Logos (Cerebral)",
+    sublabel: "Stimulate the intellect. Layered, morally complex, and thought-provoking cinema that lingers for days.",
   },
   {
     id: "brain_off",
-    label: "Entertain Me",
-    sublabel: "Pure spectacle. High-octane action, sharp comedy, or masala chaos. Zero analytical effort required.",
+    label: "Catharsis (Spectacle)",
+    sublabel: "Pure emotional release. High-octane action, sharp comedy, or spectacular chaos. Let the mind rest.",
   },
   {
     id: "feel",
-    label: "Move Me",
-    sublabel: "I need to feel something real tonight — grief, joy, longing. Emotionally charged, deeply human stories.",
+    label: "Pathos (Emotional)",
+    sublabel: "Deeply moving human stories. Explore raw empathy, grief, joy, and the depth of human experience.",
   },
 ];
 
 export const REALITY_OPTIONS = [
   {
     id: "grounded",
-    label: "Keep It Real",
-    sublabel: "Rooted in truth. True events, naturalistic performances, and the kind of realism that makes your chest tighten.",
+    label: "Mimesis (Realism)",
+    sublabel: "Mirror of reality. True events, naturalistic acting, and authentic slice-of-life drama.",
   },
   {
     id: "escapism",
-    label: "Take Me Away",
-    sublabel: "A completely different world. Fantasy, mythology, sci-fi, surreal dreamscapes — anywhere but here.",
+    label: "Phantasia (Fantasy)",
+    sublabel: "Journeys to imaginary realms. Mythological epics, science fiction, and surreal dreamscapes.",
   },
 ];
 
 export const COMMITMENT_OPTIONS = [
   {
     id: "quick",
-    label: "Under Two Hours",
-    sublabel: "Tight, punchy, no filler. Every scene earns its place. Under 110 minutes, sharp as a blade.",
+    label: "Kairos (Under 2 Hours)",
+    sublabel: "The opportune moment. Tight, punchy, under 110 minutes with zero wasted scenes.",
   },
   {
     id: "epic",
-    label: "I Have All Night",
-    sublabel: "Sagas, sprawling epics, slow burns. 130+ minutes. I'm going nowhere and I don't want to.",
+    label: "Aion (Sprawling Epic)",
+    sublabel: "Eternal narratives. Sprawling sagas, slow burns, and grand journeys that take all night.",
   },
 ];
 
@@ -76,6 +76,23 @@ export const PHASE = {
 
 const LS_KEY = "socrates_baseline_v1";
 
+function createBaselineProfile() {
+  return {
+    favorite_movies: [],
+    favorite_genres: [],
+    dealbreakers: [],
+    preferred_language: "any",
+  };
+}
+
+function createSessionState() {
+  return {
+    energy: null,
+    reality: null,
+    commitment: null,
+  };
+}
+
 function loadBaseline() {
   try {
     const raw = localStorage.getItem(LS_KEY);
@@ -93,49 +110,49 @@ function saveBaseline(profile) {
   }
 }
 
+function hasTasteProfile(profile) {
+  return profile.favorite_movies.length > 0 || profile.favorite_genres.length > 0;
+}
+
+function parseRecommendationError(err) {
+  const detail = err?.response?.data?.detail;
+  if (Array.isArray(detail)) {
+    return detail.map((item) => item.msg).join(", ");
+  }
+  return (
+    detail ||
+    (err?.response?.status
+      ? `Request failed with status ${err.response.status}`
+      : "") ||
+    err?.message ||
+    "Something went wrong. Please try again."
+  );
+}
+
 // ── Store definition ───────────────────────────────────────────────────────
 
 export const useSocratesStore = defineStore("socrates", () => {
   // ── Baseline profile (persisted) ──────────────────────────────────────
   const _saved = loadBaseline();
 
-  const baselineProfile = ref(
-    _saved || {
-      favorite_movies: [],      // Array<string> – up to 5 titles
-      favorite_genres: [],      // Array<string>
-      dealbreakers: [],         // Array<string> – e.g. ["gore", "subtitles"]
-      preferred_language: "any",
-    }
-  );
+  const baselineProfile = ref(_saved || createBaselineProfile());
 
-  const hasBaseline = computed(() => {
-    const bp = baselineProfile.value;
-    return bp.favorite_movies.length > 0 || bp.favorite_genres.length > 0;
-  });
+  const hasBaseline = computed(() => hasTasteProfile(baselineProfile.value));
 
   function saveProfile() {
     saveBaseline(baselineProfile.value);
   }
 
   function resetBaseline() {
-    baselineProfile.value = {
-      favorite_movies: [],
-      favorite_genres: [],
-      dealbreakers: [],
-      preferred_language: "any",
-    };
+    baselineProfile.value = createBaselineProfile();
     localStorage.removeItem(LS_KEY);
   }
 
   // ── Session state (ephemeral, reset each run) ─────────────────────────
-  const sessionState = ref({
-    energy: null,     // "think" | "brain_off" | "feel"
-    reality: null,    // "grounded" | "escapism"
-    commitment: null, // "quick" | "epic"
-  });
+  const sessionState = ref(createSessionState());
 
   function resetSession() {
-    sessionState.value = { energy: null, reality: null, commitment: null };
+    sessionState.value = createSessionState();
   }
 
   // ── UI Phase ──────────────────────────────────────────────────────────
@@ -156,6 +173,27 @@ export const useSocratesStore = defineStore("socrates", () => {
   const seenTitles = ref([]);
 
   // ── Actions ───────────────────────────────────────────────────────────
+
+  function buildRecommendationPayload() {
+    return {
+      baseline_profile: baselineProfile.value,
+      session_state: { ...sessionState.value },
+      seen_titles: [...seenTitles.value],
+    };
+  }
+
+  function rememberCurrentRecommendations() {
+    for (const film of recommendation.value || []) {
+      if (!seenTitles.value.includes(film.title)) {
+        seenTitles.value.push(film.title);
+      }
+    }
+  }
+
+  function clearRecommendationState() {
+    recommendation.value = null;
+    error.value = null;
+  }
 
   /** Called when user completes the onboarding form. */
   function finishOnboarding() {
@@ -187,33 +225,22 @@ export const useSocratesStore = defineStore("socrates", () => {
   /** Core API call. Transitions to LOADING then REVEAL (or error). */
   async function fetchRecommendation() {
     phase.value = PHASE.LOADING;
-    error.value = null;
-    recommendation.value = null;
+    clearRecommendationState();
 
     try {
-      const payload = {
-        baseline_profile: baselineProfile.value,
-        session_state: {
-          energy: sessionState.value.energy,
-          reality: sessionState.value.reality,
-          commitment: sessionState.value.commitment,
-        },
-        seen_titles: [...seenTitles.value],  // exclude already-shown films
-      };
-
-      const { data } = await axios.post(`${API_BASE}/api/recommend`, payload, {
-        timeout: 30000, // 30 s – LLM + TMDB can be slow on slow networks
-        headers: { "Content-Type": "application/json" },
-      });
+      const { data } = await axios.post(
+        `${API_BASE}/api/recommend`,
+        buildRecommendationPayload(),
+        {
+          timeout: 30000, // 30 s – LLM + TMDB can be slow on slow networks
+          headers: { "Content-Type": "application/json" },
+        }
+      );
 
       recommendation.value = data.films; // array of 3 MovieCards
       phase.value = PHASE.REVEAL;
     } catch (err) {
-      const msg =
-        err?.response?.data?.detail ||
-        err?.message ||
-        "Something went wrong. Please try again.";
-      error.value = msg;
+      error.value = parseRecommendationError(err);
       // Regress to Tap 1 so user can retry with different taps
       phase.value = PHASE.TAP_1;
       resetSession();
@@ -225,21 +252,14 @@ export const useSocratesStore = defineStore("socrates", () => {
    * Adds the currently shown titles to seenTitles so the LLM excludes them.
    */
   async function findMore() {
-    if (recommendation.value?.length) {
-      for (const film of recommendation.value) {
-        if (!seenTitles.value.includes(film.title)) {
-          seenTitles.value.push(film.title);
-        }
-      }
-    }
+    rememberCurrentRecommendations();
     await fetchRecommendation();
   }
 
   /** Start over — pick new taps (clears seen history). */
   function startNewSession() {
     resetSession();
-    recommendation.value = null;
-    error.value = null;
+    clearRecommendationState();
     seenTitles.value = [];
     phase.value = PHASE.TAP_1;
   }
@@ -248,8 +268,7 @@ export const useSocratesStore = defineStore("socrates", () => {
   function fullReset() {
     resetBaseline();
     resetSession();
-    recommendation.value = null;
-    error.value = null;
+    clearRecommendationState();
     seenTitles.value = [];
     phase.value = PHASE.ONBOARDING;
   }

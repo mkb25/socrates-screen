@@ -126,9 +126,10 @@ Tap 1 – Energy      Tap 2 – Reality     Tap 3 – Commitment
 
 On **Tap 3**, the app fires `POST /api/recommend` which:
 1. Sends the 3-tap state + baseline profile to **Llama 3.3-70B** via Groq
-2. Searches **TMDB** server-side for the title's poster
-3. Rewrites the poster URL through the **Cloudflare Worker** to bypass ISP blocks
-4. Returns the complete `MovieCard` to the frontend
+2. Validates each LLM candidate against **TMDB** so hallucinated titles are rejected
+3. Fetches TMDB details such as poster, runtime, rating, language, and TMDB id
+4. Rewrites the poster URL through the **Cloudflare Worker** to bypass ISP blocks
+5. Returns the complete verified `MovieCard` list to the frontend
 
 ---
 
